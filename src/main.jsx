@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
@@ -17,7 +16,7 @@ const tr = {
     search:'Szukaj po numerze, temacie, mailu, firmie...', allowedDomains:'Dozwolone domeny', allowedEmails:'Dodatkowe adresy',
     addDomain:'Dodaj domenę', addEmail:'Dodaj adres', systemMail:'Adres zgłoszeń', owner:'Twórca / support',
     statusNew:'Nowe', statusAccepted:'Przyjęte', statusPlanned:'Zaplanowane', statusInProgress:'W realizacji', statusDone:'Wykonane', statusClosed:'Zamknięte', statusOverdue:'Opóźnione',
-    viewAll:'Zobacz wszystkie', question:'ZAPYTANIE O APLIKACJĘ SlawOS'
+    viewAll:'Zobacz wszystkie', question:'ZAPYTANIE O APLIKACJĘ SlawOS', loading:'Ładowanie danych z Supabase...'
   },
   cs: {
     dashboard:'Přehled', requests:'Požadavky', planned:'Plánované akce / Servisy', archive:'Archiv', trash:'Koš', settings:'Nastavení',
@@ -26,69 +25,93 @@ const tr = {
     search:'Hledat podle čísla, tématu, e-mailu, firmy...', allowedDomains:'Povolené domény', allowedEmails:'Další adresy',
     addDomain:'Přidat doménu', addEmail:'Přidat adresu', systemMail:'Adresa pro požadavky', owner:'Tvůrce / podpora',
     statusNew:'Nové', statusAccepted:'Přijaté', statusPlanned:'Naplánované', statusInProgress:'V realizaci', statusDone:'Hotovo', statusClosed:'Uzavřeno', statusOverdue:'Zpožděné',
-    viewAll:'Zobrazit vše', question:'DOTAZ K APLIKACI SlawOS'
-  }
-}
-const [tickets, setTickets] = useState([])
-
-useEffect(() => {
-  loadTickets()
-}, [])
-
-async function loadTickets() {
-  const { data, error } = await supabase
-    .from('tickets')
-    .select('*')
-    .order('created_at', { ascending: false })
-
-if (error) {
-  console.error(error)
-} else {
-  setTickets(data || [])
-}
-}
-
-const initial = {
-  items: [
-    {id:'OS-26-117', module:'request', status:'new', title:'Brak chłodzenia w pomieszczeniu biurowym', sender:'jan.kowalski@firma.pl', received:'22.05.2026 14:32'},
-    {id:'OS-26-116', module:'request', status:'new', title:'Awaria klimatyzacji – budynek A', sender:'serwis@cooltech.pl', received:'22.05.2026 13:58'},
-    {id:'OS-26-110', module:'request', status:'accepted', title:'Wyciek wody z jednostki klimatyzacyjnej', sender:'technik@marf.cz', received:'22.05.2026 10:18'},
-    {id:'OS-26-107', module:'request', status:'planned', title:'Przegląd klimatyzacji', date:'2026-05-22', sender:'admin@marf.cz'},
-    {id:'OS-26-098', module:'request', status:'overdue', title:'Naprawa klimatyzacji', date:'2026-05-19', sender:'recepce@firma.cz'},
-    {id:'PA-26-015', module:'planned', status:'planned', title:'Przegląd roczny HVAC', date:'2026-05-30', company:'ABC Serwis s.r.o.'},
-    {id:'PA-26-014', module:'planned', status:'planned', title:'Serwis agregatu wody lodowej', date:'2026-06-05', company:'CoolTech s.r.o.'}
-  ],
-  settings: {
-    allowedDomains:['@marf.cz'],
-    allowedEmails:['servis@partner.cz'],
-    systemMail:'slawos@slawo.art',
-    ownerMail:'servis@slawo.art',
-    subscriptionStatus:'active',
-    expiresAt:null
+    viewAll:'Zobrazit vše', question:'DOTAZ K APLIKACI SlawOS', loading:'Načítání dat ze Supabase...'
   }
 }
 
-const KEY = 'slawos_v07_online_ready'
-function load(){ return JSON.parse(localStorage.getItem(KEY) || JSON.stringify(initial)) }
-function statusText(t, s){ return ({new:t.statusNew, accepted:t.statusAccepted, planned:t.statusPlanned, in_progress:t.statusInProgress, done:t.statusDone, closed:t.statusClosed, overdue:t.statusOverdue}[s] || s) }
+const fallbackItems = [
+  {id:'OS-26-117', module:'request', status:'new', title:'Brak chłodzenia w pomieszczeniu biurowym', sender:'jan.kowalski@firma.pl', received:'22.05.2026 14:32'},
+  {id:'OS-26-116', module:'request', status:'new', title:'Awaria klimatyzacji – budynek A', sender:'serwis@cooltech.pl', received:'22.05.2026 13:58'},
+  {id:'OS-26-110', module:'request', status:'accepted', title:'Wyciek wody z jednostki klimatyzacyjnej', sender:'technik@marf.cz', received:'22.05.2026 10:18'},
+  {id:'OS-26-107', module:'request', status:'planned', title:'Przegląd klimatyzacji', date:'2026-05-22', sender:'admin@marf.cz'},
+  {id:'OS-26-098', module:'request', status:'overdue', title:'Naprawa klimatyzacji', date:'2026-05-19', sender:'recepce@firma.cz'},
+  {id:'PA-26-015', module:'planned', status:'planned', title:'Przegląd roczny HVAC', date:'2026-05-30', company:'ABC Serwis s.r.o.'},
+  {id:'PA-26-014', module:'planned', status:'planned', title:'Serwis agregatu wody lodowej', date:'2026-06-05', company:'CoolTech s.r.o.'}
+]
+
+const defaultSettings = {
+  allowedDomains:['@marf.cz'],
+  allowedEmails:['servis@partner.cz'],
+  systemMail:'slawos@slawo.art',
+  ownerMail:'servis@slawo.art',
+  subscriptionStatus:'active',
+  expiresAt:null
+}
+
+const SETTINGS_KEY = 'slawos_settings_v07'
+
+function normalizeTicket(row) {
+  return {
+    id: `OS-${String(row.id).padStart(3, '0')}`,
+    module: 'request',
+    status: row.status || 'new',
+    title: row.title || 'Bez tytułu',
+    sender: row.sender || 'Supabase',
+    received: row.created_at ? new Date(row.created_at).toLocaleString('pl-PL') : '',
+    date: row.date || null,
+    company: row.company || null
+  }
+}
+
+function statusText(t, s){
+  return ({new:t.statusNew, accepted:t.statusAccepted, planned:t.statusPlanned, in_progress:t.statusInProgress, done:t.statusDone, closed:t.statusClosed, overdue:t.statusOverdue}[s] || s)
+}
 
 function App(){
   const [lang,setLang] = useState(localStorage.getItem('slawos_lang') || 'pl')
   const [view,setView] = useState('dashboard')
   const [admin,setAdmin] = useState(sessionStorage.getItem('slawos_admin') === '1')
-  const [data,setData] = useState(load())
+  const [settings,setSettings] = useState(() => JSON.parse(localStorage.getItem(SETTINGS_KEY) || JSON.stringify(defaultSettings)))
+  const [items,setItems] = useState(fallbackItems)
+  const [loading,setLoading] = useState(true)
   const [q,setQ] = useState('')
   const [domain,setDomain] = useState('')
   const [email,setEmail] = useState('')
   const t = tr[lang]
 
-  useEffect(()=>localStorage.setItem(KEY, JSON.stringify(data)),[data])
+  useEffect(()=>localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)),[settings])
   useEffect(()=>localStorage.setItem('slawos_lang', lang),[lang])
 
-  const items = useMemo(()=>{
+  useEffect(() => {
+    loadTickets()
+    const channel = supabase
+      .channel('tickets-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => loadTickets())
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [])
+
+  async function loadTickets() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Supabase tickets error:', error)
+      setItems(fallbackItems)
+    } else {
+      const onlineTickets = (data || []).map(normalizeTicket)
+      setItems(onlineTickets.length ? onlineTickets : fallbackItems)
+    }
+    setLoading(false)
+  }
+
+  const filteredItems = useMemo(()=>{
     const s=q.toLowerCase()
-    return data.items.filter(i=>!s || [i.id,i.title,i.sender,i.company,i.status].join(' ').toLowerCase().includes(s))
-  },[data.items,q])
+    return items.filter(i=>!s || [i.id,i.title,i.sender,i.company,i.status].join(' ').toLowerCase().includes(s))
+  },[items,q])
 
   function login(){
     if(admin){ sessionStorage.removeItem('slawos_admin'); setAdmin(false); return }
@@ -98,18 +121,18 @@ function App(){
 
   function addDomain(){
     if(!admin || !domain.trim()) return
-    setData(d=>({...d, settings:{...d.settings, allowedDomains:[...new Set([...d.settings.allowedDomains, domain.trim()])]}}))
+    setSettings(d=>({...d, allowedDomains:[...new Set([...d.allowedDomains, domain.trim()])]}))
     setDomain('')
   }
 
   function addEmail(){
     if(!admin || !email.trim()) return
-    setData(d=>({...d, settings:{...d.settings, allowedEmails:[...new Set([...d.settings.allowedEmails, email.trim()])]}}))
+    setSettings(d=>({...d, allowedEmails:[...new Set([...d.allowedEmails, email.trim()])]}))
     setEmail('')
   }
 
-  const count = fn => items.filter(fn).length
-  const newReq = items.filter(i=>i.status==='new')
+  const count = fn => filteredItems.filter(fn).length
+  const newReq = filteredItems.filter(i=>i.status==='new')
   const columns = [
     {title:t.acceptedNoDate, cls:'yellow', filter:i=>i.status==='accepted'},
     {title:t.current, cls:'green', filter:i=>i.module==='request' && ['planned','in_progress'].includes(i.status)},
@@ -128,14 +151,14 @@ function App(){
       <div className="mode">◉ {admin ? t.admin : t.preview}</div>
       <footer>
         <div>SlawOS v0.7 by <b>SLAWO</b></div>
-        <a href={`mailto:${data.settings.ownerMail}?subject=${encodeURIComponent(t.question)}`}>{data.settings.ownerMail}</a>
-        <small>{t.systemMail}: {data.settings.systemMail}</small>
+        <a href={`mailto:${settings.ownerMail}?subject=${encodeURIComponent(t.question)}`}>{settings.ownerMail}</a>
+        <small>{t.systemMail}: {settings.systemMail}</small>
       </footer>
     </aside>
 
     <main>
       <header>
-        <div><div className="kicker">SLAWOS ONLINE READY</div><h1>{view==='dashboard'?t.dashboard.toUpperCase():(t[view]||view)}</h1></div>
+        <div><div className="kicker">SLAWOS ONLINE + SUPABASE</div><h1>{view==='dashboard'?t.dashboard.toUpperCase():(t[view]||view)}</h1></div>
         <div className="topActions">
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder={t.search}/>
           <div className="langs"><button className={lang==='pl'?'on':''} onClick={()=>setLang('pl')}>🇵🇱</button><button className={lang==='cs'?'on':''} onClick={()=>setLang('cs')}>🇨🇿</button></div>
@@ -144,6 +167,7 @@ function App(){
       </header>
 
       {view==='dashboard' && <>
+        {loading && <div className="loading">{t.loading}</div>}
         <section className="stats">
           <Stat label={t.newRequests} n={count(i=>i.status==='new')} color="blue"/>
           <Stat label={t.acceptedNoDate} n={count(i=>i.status==='accepted')} color="yellow"/>
@@ -151,17 +175,15 @@ function App(){
           <Stat label={t.overdue} n={count(i=>i.status==='overdue')} color="red"/>
           <Stat label={t.plannedActions} n={count(i=>i.module==='planned')} color="violet"/>
         </section>
-
         <section className="newPanel laser">
           <div className="panelHead"><h2>✉ {t.newRequests}</h2><span>{newReq.length} nowych</span></div>
           <table><thead><tr><th>ID</th><th>Temat</th><th>Od</th><th>Wpłynęło</th></tr></thead><tbody>
             {newReq.map(i=><tr key={i.id}><td>{i.id}</td><td>{i.title}</td><td>{i.sender}</td><td>{i.received}</td></tr>)}
           </tbody></table>
         </section>
-
         <section className="columns">
           {columns.map(c=>{
-            const list=items.filter(c.filter)
+            const list=filteredItems.filter(c.filter)
             return <div className={`column ${c.cls}`} key={c.title}>
               <div className="columnHead"><h3>{c.title}</h3><b>{list.length}</b></div>
               {list.slice(0,4).map(i=><Card key={i.id} item={i} text={statusText(t,i.status)}/>)}
@@ -174,13 +196,12 @@ function App(){
       {view==='settings' && <section className="settings laser">
         <h2>{t.settings}</h2>
         <div className="settingsGrid">
-          <div><h3>{t.allowedDomains}</h3><div className="line"><input value={domain} onChange={e=>setDomain(e.target.value)} placeholder="@marf.cz"/><button disabled={!admin} onClick={addDomain}>{t.addDomain}</button></div>{data.settings.allowedDomains.map(x=><span className="pill" key={x}>{x}</span>)}</div>
-          <div><h3>{t.allowedEmails}</h3><div className="line"><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="jan@gmail.com"/><button disabled={!admin} onClick={addEmail}>{t.addEmail}</button></div>{data.settings.allowedEmails.map(x=><span className="pill" key={x}>{x}</span>)}</div>
-          <div><h3>SaaS / Abonament</h3><p>Status: <b>{data.settings.subscriptionStatus}</b></p><p>Ważność: <b>{data.settings.expiresAt || 'bezterminowo'}</b></p><small>Struktura gotowa pod trial 30 dni i konto terminowe.</small></div>
+          <div><h3>{t.allowedDomains}</h3><div className="line"><input value={domain} onChange={e=>setDomain(e.target.value)} placeholder="@marf.cz"/><button disabled={!admin} onClick={addDomain}>{t.addDomain}</button></div>{settings.allowedDomains.map(x=><span className="pill" key={x}>{x}</span>)}</div>
+          <div><h3>{t.allowedEmails}</h3><div className="line"><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="jan@gmail.com"/><button disabled={!admin} onClick={addEmail}>{t.addEmail}</button></div>{settings.allowedEmails.map(x=><span className="pill" key={x}>{x}</span>)}</div>
+          <div><h3>SaaS / Abonament</h3><p>Status: <b>{settings.subscriptionStatus}</b></p><p>Ważność: <b>{settings.expiresAt || 'bezterminowo'}</b></p><small>Struktura gotowa pod trial 30 dni i konto terminowe.</small></div>
         </div>
       </section>}
-
-      {view!=='dashboard' && view!=='settings' && <section className="settings laser"><h2>{t[view]}</h2><p>Ten widok będzie rozwijany po podpięciu tabel Supabase. Dashboard i ustawienia są już online-ready.</p></section>}
+      {view!=='dashboard' && view!=='settings' && <section className="settings laser"><h2>{t[view]}</h2><p>Ten widok będzie rozwijany po podpięciu pełnego modelu danych Supabase.</p></section>}
     </main>
   </div>
 }
