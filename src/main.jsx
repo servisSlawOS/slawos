@@ -46,6 +46,8 @@ if (error) {
 } else {
   setTickets(data || [])
 }
+}
+
 const initial = {
   items: [
     {id:'OS-26-117', module:'request', status:'new', title:'Brak chłodzenia w pomieszczeniu biurowym', sender:'jan.kowalski@firma.pl', received:'22.05.2026 14:32'},
