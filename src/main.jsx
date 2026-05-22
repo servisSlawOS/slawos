@@ -29,7 +29,22 @@ const tr = {
     viewAll:'Zobrazit vše', question:'DOTAZ K APLIKACI SlawOS'
   }
 }
+const [tickets, setTickets] = useState([])
 
+useEffect(() => {
+  loadTickets()
+}, [])
+
+async function loadTickets() {
+  const { data, error } = await supabase
+    .from('tickets')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (!error) {
+    setTickets(data)
+  }
+}
 const initial = {
   items: [
     {id:'OS-26-117', module:'request', status:'new', title:'Brak chłodzenia w pomieszczeniu biurowym', sender:'jan.kowalski@firma.pl', received:'22.05.2026 14:32'},
