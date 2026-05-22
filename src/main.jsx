@@ -41,9 +41,10 @@ async function loadTickets() {
     .select('*')
     .order('created_at', { ascending: false })
 
-  if (!error) {
-    setTickets(data)
-  }
+if (error) {
+  console.error(error)
+} else {
+  setTickets(data || [])
 }
 const initial = {
   items: [
