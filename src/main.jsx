@@ -102,7 +102,14 @@ function App(){
       console.error('Supabase tickets error:', error)
       setItems(onlineTickets.length ? onlineTickets : fallbackItems)
     } else {
-      const onlineTickets = (data || []).map(normalizeTicket)
+      const onlineTickets = (data || []).map(ticket => ({
+  id: ticket.id,
+  module: 'request',
+  status: ticket.status || 'new',
+  title: ticket.title,
+  sender: 'supabase@system.local',
+  received: new Date(ticket.created_at).toLocaleString()
+}))
       setItems(onlineTickets.length ? onlineTickets : fallbackItems)
     }
     setLoading(false)
