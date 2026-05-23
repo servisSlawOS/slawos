@@ -100,7 +100,7 @@ function App(){
 
     if (error) {
       console.error('Supabase tickets error:', error)
-      setItems(fallbackItems)
+      setItems(onlineTickets.length ? onlineTickets : fallbackItems)
     } else {
       const onlineTickets = (data || []).map(normalizeTicket)
       setItems(onlineTickets.length ? onlineTickets : fallbackItems)
